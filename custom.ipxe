@@ -3,10 +3,161 @@
 ### netboot.xyz-custom menu
 ###
 
+# Uncomment and replace these values before using Desktop-Linux.
+# set iscsi_mac 00:11:22:33:44:55
+# set iscsi_ip 192.0.2.20
+# set iscsi_netmask 255.255.255.0
+# set iscsi_vlan 10
+# set iscsi_target iscsi:192.0.2.10::::iqn.2024-01.example:desktop-linux
+#
+# The VLAN is optional. The example uses a directly connected iSCSI subnet.
+# Do not put iSCSI credentials in this publicly accessible script.
+
 :start
-echo Hello world!
-sleep 10
-goto custom_exit
+dhcp || goto dhcp_failed
+
+:main_menu
+clear custom_choice
+menu Custom boot menu
+item starfleet Starfleet
+item netboot_xyz Netboot.xyz
+choose custom_choice || goto custom_exit
+goto ${custom_choice}
+
+:starfleet
+clear custom_choice
+menu Starfleet
+item sans Sans
+item images Images
+item main_menu Back
+choose custom_choice || goto main_menu
+goto ${custom_choice}
+
+:sans
+clear custom_choice
+menu Starfleet - Sans
+item desktop_linux Desktop-Linux
+item starfleet Back
+choose custom_choice || goto starfleet
+goto ${custom_choice}
+
+:desktop_linux
+isset ${iscsi_mac} || goto iscsi_unconfigured
+isset ${iscsi_ip} || goto iscsi_unconfigured
+isset ${iscsi_netmask} || goto iscsi_unconfigured
+isset ${iscsi_target} || goto iscsi_unconfigured
+
+iseq ${net0/mac} ${iscsi_mac} && goto iscsi_net0 || goto iscsi_check_net1
+:iscsi_check_net1
+iseq ${net1/mac} ${iscsi_mac} && goto iscsi_net1 || goto iscsi_check_net2
+:iscsi_check_net2
+iseq ${net2/mac} ${iscsi_mac} && goto iscsi_net2 || goto iscsi_check_net3
+:iscsi_check_net3
+iseq ${net3/mac} ${iscsi_mac} && goto iscsi_net3 || goto iscsi_nic_failed
+
+:iscsi_net0
+set iscsi_nic net0
+goto iscsi_configure
+:iscsi_net1
+set iscsi_nic net1
+goto iscsi_configure
+:iscsi_net2
+set iscsi_nic net2
+goto iscsi_configure
+:iscsi_net3
+set iscsi_nic net3
+goto iscsi_configure
+
+:iscsi_configure
+set iscsi_if ${iscsi_nic}
+isset ${iscsi_vlan} || goto iscsi_configure_ip
+set iscsi_if ${iscsi_nic}-${iscsi_vlan}
+iseq ${iscsi_vlan_ready} ${iscsi_if} && goto iscsi_configure_ip || goto iscsi_create_vlan
+
+:iscsi_create_vlan
+vcreate --tag ${iscsi_vlan} ${iscsi_nic} || goto iscsi_network_failed
+set iscsi_vlan_ready ${iscsi_if}
+
+:iscsi_configure_ip
+set ${iscsi_if}/ip ${iscsi_ip} || goto iscsi_network_failed
+set ${iscsi_if}/netmask ${iscsi_netmask} || goto iscsi_network_failed
+ifopen ${iscsi_if} || goto iscsi_network_failed
+
+:desktop_linux_menu
+clear custom_choice
+menu Desktop-Linux
+item desktop_linux_boot Boot iSCSI disk
+item desktop_linux_install Netboot.xyz installer
+item sans Back
+choose custom_choice || goto sans
+goto ${custom_choice}
+
+:desktop_linux_boot
+sanboot ${iscsi_target} || goto iscsi_boot_failed
+goto desktop_linux_menu
+
+:desktop_linux_install
+sanhook --drive 0x80 ${iscsi_target} || goto iscsi_attach_failed
+chain https://boot.netboot.xyz || goto iscsi_installer_failed
+sanunhook --drive 0x80 || goto iscsi_detach_failed
+goto desktop_linux_menu
+
+:iscsi_installer_failed
+echo Failed to load netboot.xyz.
+sanunhook --drive 0x80 || goto iscsi_detach_failed
+sleep 3
+goto desktop_linux_menu
+
+:iscsi_unconfigured
+echo Desktop-Linux iSCSI settings are incomplete.
+sleep 3
+goto sans
+
+:iscsi_nic_failed
+echo No matching iSCSI interface found on net0 through net3.
+sleep 3
+goto sans
+
+:iscsi_network_failed
+echo Failed to configure the iSCSI interface.
+sleep 3
+goto sans
+
+:iscsi_boot_failed
+echo Failed to boot the iSCSI disk.
+sleep 3
+goto desktop_linux_menu
+
+:iscsi_attach_failed
+echo Failed to attach the iSCSI disk.
+sleep 3
+goto desktop_linux_menu
+
+:iscsi_detach_failed
+echo Failed to detach the iSCSI disk.
+sleep 3
+goto sans
+
+:images
+clear custom_choice
+menu Starfleet - Images
+item --gap No custom images configured.
+item starfleet Back
+choose custom_choice || goto starfleet
+goto ${custom_choice}
+
+:netboot_xyz
+chain https://boot.netboot.xyz || goto netboot_failed
+goto main_menu
+
+:netboot_failed
+echo Failed to load netboot.xyz.
+sleep 3
+goto main_menu
+
+:dhcp_failed
+echo DHCP configuration failed.
+sleep 5
 
 :custom_exit
 exit 0
