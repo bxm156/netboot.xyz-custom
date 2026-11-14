@@ -3,10 +3,27 @@
 ### netboot.xyz-custom menu
 ###
 
-:start
-echo Hello world!
-sleep 10
-goto custom_exit
+dhcp || goto dhcp_failed
+
+:custom
+clear custom_choice
+menu Custom boot menu
+item starfleet ${space} Starfleet
+item netboot_xyz ${space} NetBoot.XYZ
+choose custom_choice || goto custom_exit
+goto ${custom_choice}
+
+:starfleet
+chain --autofree http://gitea.vms.bryanmarty.me:3000/starfleet/ipxe/raw/branch/main/menu.ipxe || echo Starfleet menu failed to load
+goto custom
+
+:netboot_xyz
+chain --autofree https://boot.netboot.xyz || echo NetBoot.XYZ failed to load
+goto custom
+
+:dhcp_failed
+echo DHCP configuration failed.
+sleep 5
 
 :custom_exit
 exit 0
